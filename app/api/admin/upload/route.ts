@@ -1,72 +1,89 @@
-// app/api/admin/upload/route.ts
 import { NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
-import JSZip from 'jszip';
 import prisma from '@/lib/prisma';
-import { fetchYoutubeMetadata } from '@/lib/youtube';
+import JSZip from 'jszip';
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File; // Adminin yükleyeceği ZIP dosyası
+    const formData = await req.formData();
     const title = formData.get('title') as string;
     const artist = formData.get('artist') as string;
+    const youtubeId = formData.get('youtubeId') as string;
+    const file = formData.get('file') as File;
 
-    if (!file || !title || !artist) {
-      return NextResponse.json({ error: 'Eksik bilgi gönderildi.' }, { status: 400 });
+    if (!file || !title) {
+      return NextResponse.json({ error: 'Eksik bilgiler var' }, { status: 400 });
     }
 
-    // 1. YouTube'dan kapak fotoğrafını çek
-    const ytData = await fetchYoutubeMetadata(title, artist);
-
-    // 2. Şarkıyı Veritabanına (Neon'a) kaydet
+    // 1. Şarkıyı oluştur
     const song = await prisma.song.create({
-      data: {
-        title,
-        artist,
-        youtubeId: ytData?.videoId,
-        thumbnailUrl: ytData?.thumbnail,
-        viewCount: ytData?.viewCount,
+      data: { 
+        title, 
+        artist, 
+        youtubeId,
+        thumbnailUrl: youtubeId ? `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg` : null
       }
     });
 
-    // 3. ZIP Dosyasını Bellekte Aç
+    // 2. ZIP dosyasını oku
+    const arrayBuffer = await file.arrayBuffer();
     const zip = new JSZip();
-    const loadedZip = await zip.loadAsync(await file.arrayBuffer());
+    const loadedZip = await zip.loadAsync(arrayBuffer);
     
-    // 4. İçindeki 5 katmanı bul, Vercel Blob'a yükle ve veritabanına URL'lerini kaydet
-    const stemTypes = ['drums', 'bass', 'synth', 'vocals', 'full'];
-    
-    for (let i = 0; i < stemTypes.length; i++) {
-      const type = stemTypes[i];
-      // ZIP'in içinde 'drums.mp3' gibi bir dosya arıyoruz
-      const zipFile = loadedZip.file(`${type}.mp3`) || loadedZip.file(`${type}.m4a`); 
+    const allFileNames = Object.keys(loadedZip.files);
+    console.log("ZIP İçindeki Dosyalar:", allFileNames);
+
+    // 3. Eşleştirme kuralları
+    const stemMapping = [
+      { key: 'drums', search: ['drums', 'drum'] },
+      { key: 'bass', search: ['bass'] },
+      { key: 'synth', search: ['synth', 'instrumental', 'other', 'piano', 'guitar'] },
+      { key: 'vocals', search: ['vocals', 'vocal', 'voice'] },
+      { key: 'full', search: ['full', 'original', 'mix'] }
+    ];
+
+    // 4. Dosyaları bul ve yükle
+    for (let i = 0; i < stemMapping.length; i++) {
+      const target = stemMapping[i];
       
-      if (zipFile) {
-        const buffer = await zipFile.async('nodebuffer');
+      // Esnek arama: İsmin içinde 'drums' geçiyor mu ve müzik dosyası mı?
+      const foundFileName = allFileNames.find(name => {
+        const lowerName = name.toLowerCase();
+        return target.search.some(s => lowerName.includes(s)) && 
+               (lowerName.endsWith('.mp3') || lowerName.endsWith('.wav') || lowerName.endsWith('.m4a'));
+      });
+
+      if (foundFileName) {
+        console.log(`Bulundu: ${target.key} -> ${foundFileName}`);
+        const zipFile = loadedZip.file(foundFileName);
         
-        // Vercel Blob Bulutuna Yükle (Eğer Blob tokenin yoksa burası hata verebilir, onu çözeceğiz)
-        const blob = await put(`songs/${song.id}/${type}.mp3`, buffer, { 
-          access: 'public',
-          token: process.env.BLOB_READ_WRITE_TOKEN // .env dosyasından alacak
-        });
-        
-        // Veritabanına Sesin URL'sini kaydet
-        await prisma.stem.create({
-          data: {
-            songId: song.id,
-            type: type,
-            order: i + 1, // 1'den 5'e kadar sıralama
-            audioUrl: blob.url
-          }
-        });
+        if (zipFile) {
+          const content = await zipFile.async('nodebuffer');
+          
+          // Vercel Blob'a yükle
+          const blob = await put(`songs/${song.id}/${target.key}.mp3`, content, {
+            access: 'public',
+            token: process.env.BLOB_READ_WRITE_TOKEN
+          });
+
+          // DB'ye kaydet
+          await prisma.stem.create({
+            data: {
+              songId: song.id,
+              type: target.key,
+              order: i + 1,
+              audioUrl: blob.url
+            }
+          });
+        }
+      } else {
+        console.warn(`UYARI: ${target.key} için dosya bulunamadı.`);
       }
     }
 
-    return NextResponse.json({ success: true, message: 'Şarkı başarıyla eklendi!', songId: song.id });
-
-  } catch (error) {
-    console.error("Yükleme sırasında kritik hata:", error);
-    return NextResponse.json({ error: 'Sunucu hatası oluştu.' }, { status: 500 });
+    return NextResponse.json({ success: true, songId: song.id });
+  } catch (error: any) {
+    console.error("Yükleme Hatası Detayı:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

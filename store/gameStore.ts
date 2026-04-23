@@ -78,21 +78,17 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // 3. Kullanıcı tahminde bulunmayıp "Pas / Geç" dediğinde çalışır
-  skipTurn: () => {
-    const state = get();
-    if (state.gameStatus !== 'playing') return;
-
-    const newGuesses = [...state.guesses, 'Pas Geçildi'];
-    const nextAttempt = state.currentAttempt + 1;
-
-    if (nextAttempt > 5) {
-      set({ guesses: newGuesses, gameStatus: 'lost', activeStems: state.allStemsOrder });
-    } else {
-      set({
-        guesses: newGuesses,
-        currentAttempt: nextAttempt,
-        activeStems: [...state.activeStems, state.allStemsOrder[nextAttempt - 1]]
-      });
-    }
+ // store/gameStore.ts içinde skipTurn kısmı böyle olmalı:
+skipTurn: () => set((state) => {
+  const allStems = ['drums', 'bass', 'synth', 'vocals', 'full'];
+  // Şu an kaç enstrüman varsa, bir sonrakini ekle
+  const nextIndex = state.activeStems.length;
+  
+  if (nextIndex < allStems.length) {
+    return { 
+      activeStems: [...state.activeStems, allStems[nextIndex]] 
+    };
   }
+  return state;
+}),
 }));

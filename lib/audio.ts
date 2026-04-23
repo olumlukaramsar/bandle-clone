@@ -1,89 +1,79 @@
-// lib/audio.ts
-
-export type StemData = {
-  name: string; // 'drums', 'bass', 'synth', 'vocals', 'full'
-  url: string;
-};
-
 export class AudioEngine {
   private context: AudioContext;
   private buffers: Map<string, AudioBuffer> = new Map();
   private sources: Map<string, AudioBufferSourceNode> = new Map();
   private gains: Map<string, GainNode> = new Map();
-  private startTime: number = 0;
   private isPlaying: boolean = false;
 
   constructor() {
-    // Tarayıcı uyumluluğu için AudioContext'i başlatıyoruz
     this.context = new (window.AudioContext || (window as any).webkitAudioContext)();
   }
 
-  // 1. Şarkının tüm katmanlarını (stems) arka planda indirip belleğe (Buffer) alır
-  async loadStems(stems: StemData[]) {
+  async loadStems(stems: { name: string; url: string }[]) {
+    // Her yüklemede eski kaynakları temizle
+    this.stop();
+    
     const fetchPromises = stems.map(async (stem) => {
-      const response = await fetch(stem.url);
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await this.context.decodeAudioData(arrayBuffer);
-      
-      this.buffers.set(stem.name, audioBuffer);
-      
-      // Her enstrüman için bir ses kontrol düğümü (GainNode) oluşturuyoruz
-      const gainNode = this.context.createGain();
-      gainNode.gain.value = 0; // Başlangıçta hepsi sessiz (0)
-      gainNode.connect(this.context.destination); // Hoparlöre bağla
-      this.gains.set(stem.name, gainNode);
+      try {
+        const response = await fetch(stem.url);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await this.context.decodeAudioData(arrayBuffer);
+        this.buffers.set(stem.name, audioBuffer);
+
+        const gainNode = this.context.createGain();
+        // TEST İÇİN: Başlangıçta 1 yapıyoruz (direkt ses gelsin diye)
+        gainNode.gain.value = 1; 
+        gainNode.connect(this.context.destination);
+        this.gains.set(stem.name, gainNode);
+        console.log(`Yüklendi ve Hazır: ${stem.name}`);
+      } catch (err) {
+        console.error(`${stem.name} yüklenirken hata:`, err);
+      }
     });
 
     await Promise.all(fetchPromises);
   }
 
-  // 2. Sadece aktif olan (kullanıcının açtığı) katmanların sesiyle şarkıyı başlatır
-  play(activeStems: string[]) {
-    if (this.isPlaying) return;
+// lib/audio.ts içindeki play metodunun başına ekle:
+async play(activeStems: string[]) {
+  // Bağlantıyı tazele
+  if (this.context.state === 'suspended') {
+    await this.context.resume();
+  }
+  
+  // ... geri kalan play kodların (bir önceki mesajdaki agresif sürüm kalsın)
 
-    // Eğer AudioContext duraklatılmışsa (tarayıcı politikaları gereği) uyandır
-    if (this.context.state === 'suspended') {
-      this.context.resume();
+    if (!this.isPlaying) {
+      this.buffers.forEach((buffer, name) => {
+        const source = this.context.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+
+        const gainNode = this.gains.get(name);
+        if (gainNode) {
+          source.connect(gainNode);
+          source.start(0);
+          this.sources.set(name, source);
+        }
+      });
+      this.isPlaying = true;
     }
 
-    this.sources.clear();
-    const now = this.context.currentTime;
-
-    this.buffers.forEach((buffer, name) => {
-      const source = this.context.createBufferSource();
-      source.buffer = buffer;
-      source.connect(this.gains.get(name)!);
-      
-      // BÜTÜN sesleri tam olarak aynı milisaniyede (now) başlatıyoruz
-      source.start(now);
-      this.sources.set(name, source);
-
-      // Eğer bu katman aktifse sesini aç, değilse sessizde tut
+    // Ses seviyelerini SIFIR GECİKME ile güncelle
+    this.gains.forEach((gainNode, name) => {
       if (activeStems.includes(name)) {
-        this.gains.get(name)!.gain.setValueAtTime(1, now);
+        gainNode.gain.value = 1; 
       } else {
-        this.gains.get(name)!.gain.setValueAtTime(0, now);
+        gainNode.gain.value = 0;
       }
     });
-
-    this.startTime = now;
-    this.isPlaying = true;
   }
 
-  // 3. Kullanıcı "Geç" veya "Yanlış" yaptığında yeni enstrümanın sesini yumuşakça açar
-  revealStem(name: string) {
-    const gainNode = this.gains.get(name);
-    if (gainNode && this.isPlaying) {
-      const now = this.context.currentTime;
-      // Ani patlama olmaması için sesi 0.5 saniye içinde 0'dan 1'e çıkarıyoruz (Fade-in)
-      gainNode.gain.setValueAtTime(0, now);
-      gainNode.gain.linearRampToValueAtTime(1, now + 0.5); 
-    }
-  }
-
-  // Şarkıyı durdur
   stop() {
-    this.sources.forEach(source => source.stop());
+    this.sources.forEach(s => {
+      try { s.stop(); } catch(e) {}
+    });
+    this.sources.clear();
     this.isPlaying = false;
   }
 }
