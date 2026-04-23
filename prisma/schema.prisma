@@ -1,0 +1,47 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Song {
+  id            String    @id @default(cuid())
+  title         String
+  artist        String
+  difficulty    Int       @default(1) // 1: Kolay, 2: Orta, 3: Zor
+  releaseYear   Int?
+  youtubeId     String?   // Arka planda çalacak veya kapak fotoğrafı alınacak YT videosu
+  thumbnailUrl  String?
+  viewCount     BigInt?
+  dailyDate     DateTime? @unique // Eğer bu doluysa "Günün Şarkısı"dır. Boşsa "Sınırsız Mod" havuzundadır.
+  createdAt     DateTime  @default(now())
+
+  stems         Stem[]    // Şarkının ses katmanları
+  guesses       Guess[]   // Bu şarkıya yapılan tahminler
+}
+
+// Her şarkının 5 farklı ses katmanı (ör: davul, bas, vokal vb.)
+model Stem {
+  id        String @id @default(cuid())
+  songId    String
+  song      Song   @relation(fields: [songId], references: [id], onDelete: Cascade)
+  type      String // "drums", "bass", "synth", "vocals", "full"
+  order     Int    // Katmanın açılma sırası (1'den 5'e kadar)
+  audioUrl  String // Vercel Blob'daki ses dosyasının kalıcı URL'si
+}
+
+// Oyuncu tahmin logları ve istatistikler için
+model Guess {
+  id          String   @id @default(cuid())
+  songId      String
+  song        Song     @relation(fields: [songId], references: [id])
+  userId      String?  // İleride üyelik sistemi eklersen diye hazır (şimdilik null olabilir)
+  isCorrect   Boolean
+  attempts    Int      // Şarkıyı kaçıncı katmanda (denemede) buldu? (1-6)
+  createdAt   DateTime @default(now())
+}
