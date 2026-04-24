@@ -237,6 +237,7 @@ const handleGuess = (e: React.FormEvent) => {
       </div>
 
       <h1 className="text-4xl sm:text-6xl font-black mb-12 text-white tracking-tighter italic text-center">DOSTLAR GAZİNOSU</h1>
+       <p className="text-white-200 mb-8">Bazen şarkılar geç yükleniyo. 5-10 saniye bekleyiver.</p>
       
       {gameStatus === 'idle' ? (
         <button onClick={handleStartGame} className="bg-white text-purple-950 px-16 py-8 rounded-[30px] font-black text-3xl shadow-2xl active:scale-95 transition-all">OYUNA BAŞLA</button>
