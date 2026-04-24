@@ -3,12 +3,11 @@ import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   try {
-    // Frontend'den gelen "Kaçıncı şarkıdayız?" (0, 1 veya 2) bilgisini al
     const { searchParams } = new URL(req.url);
     const indexParam = searchParams.get("index") || "0";
     const songIndex = parseInt(indexParam);
 
-    // Bütün şarkıları her zaman aynı sabit sırayla çek (ID'ye göre dizili)
+    // Tüm şarkıları ID sırasına göre çekiyoruz
     const allSongs = await db.song.findMany({
       orderBy: { id: 'asc' },
       include: { stems: true }
@@ -18,15 +17,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Veritabanında şarkı yok" }, { status: 404 });
     }
 
-    // Tarihe göre sabit bir numara üret (Böylece tüm dünyada aynı gün aynı numara çıkar)
+    // Tarihe göre sabit bir sayı üret (Günlük değişir)
     const today = new Date();
-    // Saat farklarından etkilenmemek için Türkiye saat dilimine (UTC+3) göre günü alıyoruz
-    const timeOffset = 3 * 60 * 60 * 1000; 
+    const timeOffset = 3 * 60 * 60 * 1000; // Türkiye Saati (UTC+3)
     const localTime = today.getTime() + timeOffset;
     const dayOfYear = Math.floor(localTime / (1000 * 60 * 60 * 24)); 
 
-    // Günde 3 şarkı formülü:
-    // 1. Gün: 0, 1, 2. şarkılar | 2. Gün: 3, 4, 5. şarkılar...
+    // Her gün için 3 şarkılık bir "pencere" seçiyoruz
+    // 1. Gün: 0,1,2 | 2. Gün: 3,4,5 ... şeklinde ilerler, liste bitince başa döner.
     const startIndex = (dayOfYear * 3) % allSongs.length;
     const targetIndex = (startIndex + songIndex) % allSongs.length;
 
