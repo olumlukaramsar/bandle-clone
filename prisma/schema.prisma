@@ -45,3 +45,10 @@ model Guess {
   attempts    Int      // Şarkıyı kaçıncı katmanda (denemede) buldu? (1-6)
   createdAt   DateTime @default(now())
 }
+
+model DailyScore {
+  id        String   @id @default(cuid())
+  username  String
+  points    Int
+  createdAt DateTime @default(now())
+}
