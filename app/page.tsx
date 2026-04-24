@@ -162,31 +162,28 @@ const songData = await response.json();
     playAllStems(newList);
   };
 
-  const handleGuess = (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!guessInput.trim()) return;
-  
-  // Gelişmiş Türkçe karakter desteği
-  const normalize = (str: string) => {
-    return str
-      .toLocaleLowerCase('tr-TR')
-      .replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's')
-      .replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c')
-      .replace(/[^a-z0-9]/g, '');
-  };
+const handleGuess = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!guessInput.trim()) return;
+    
+    const normalize = (str: string) => {
+      return str
+        .toLocaleLowerCase('tr-TR')
+        .replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's')
+        .replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c')
+        .replace(/[^a-z0-9]/g, '');
+    };
 
-  if (normalize(guessInput) === normalize(currentSong?.title || "")) {
-    submitGuess(guessInput); // Oyunu "Kazanıldı" moduna geçir
-    
-    // YENİ: Puanı tam bu anda, kaçıncı aşamada olduğuna bakarak hesapla
-    const puan = 100 - ((activeStems.length - 1) * 20);
-    puanKaydet(Math.max(puan, 20)); // Puanı veritabanına gönder
-    
-  } else {
-    handleSkip(); // Yanlışsa bir sonraki aşamaya geç veya hakkı bitir
-  }
-  setGuessInput('');
-};
+    if (normalize(guessInput) === normalize(currentSong?.title || "")) {
+      submitGuess(guessInput); 
+      const puan = 100 - ((activeStems.length - 1) * 20);
+      puanKaydet(Math.max(puan, 20)); 
+    } else {
+      // DÜZELTİLEN KISIM: handleSkip() silindi, yerine uyarı eklendi
+      alert("Bilemedin! Tekrar dene veya yeni enstrüman duymak için 'PAS' de."); 
+    }
+    setGuessInput('');
+  };
 
   // --- EKRANLAR ---
 
