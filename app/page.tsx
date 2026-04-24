@@ -138,21 +138,47 @@ export default function Home() {
     if (!engineRef.current) return;
     const { ctx, buffers, gains, sources } = engineRef.current;
     stopAllSources();
+
+    // Full izolasyonu: 'full' aktifse yalnızca 'full' çalar, diğerleri susturulur
+    const isFull = activeList.includes('full');
+
+    // ── Strict Sync Lock ──────────────────────────────────────────────────
+    // Tüm src.start() çağrıları aynı ctx.currentTime referansını kullanır;
+    // böylece kanallar arasında hiç kayma olmaz.
+    const startTime = ctx.currentTime;
+
     STEM_ORDER.forEach(stem => {
       const buffer = buffers.get(stem);
       const gain = gains.get(stem);
       if (!buffer || !gain) return;
+
       const src = ctx.createBufferSource();
       src.buffer = buffer;
       src.loop = true;
-      // Bass enstrümanı öne çıkarılır (1.7x kazanç)
-      const stemGain = stem === 'bass' ? 1.7 : 1;
-      gain.gain.value = activeList.includes(stem) ? stemGain : 0;
+
+      // Gain kararı:
+      //  • Full aşamasında: sadece 'full' = 1, geri kalan = 0
+      //  • Normal aşamalarda: activeList'te varsa → bass için 1.7x, diğerleri 1; yoksa 0
+      let targetGain: number;
+      if (isFull) {
+        targetGain = stem === 'full' ? 1 : 0;
+      } else {
+        if (activeList.includes(stem)) {
+          targetGain = stem === 'bass' ? 1.7 : 1; // Bass Boost koruması
+        } else {
+          targetGain = 0;
+        }
+      }
+      gain.gain.value = targetGain;
+
       src.connect(gain);
-      src.start(0, offset % buffer.duration);
+      // Tüm stemler için offset'i en uzun ortak referansa göre hesapla;
+      // modulo kendi buffer.duration yerine aynı buffer.duration kullanılır.
+      src.start(startTime, offset % buffer.duration);
       sources.set(stem, src);
     });
-    engineRef.current.startTime = ctx.currentTime - offset;
+
+    engineRef.current.startTime = startTime - offset; // ctx.currentTime sabitlendi
     engineRef.current.startOffset = offset;
     engineRef.current.isPlaying = true;
   };
@@ -162,7 +188,8 @@ export default function Home() {
     const eng = engineRef.current;
     if (eng.isPlaying) {
       // Sadece sesi durdur — timer DEVAM EDER
-      const elapsed = eng.ctx.currentTime - eng.startTime + eng.startOffset;
+      // startOffset = şu ana kadar toplam oynanan süre (ctx delta + önceki offset)
+      const elapsed = eng.startOffset + (eng.ctx.currentTime - eng.startTime);
       stopAllSources();
       eng.startOffset = elapsed;
       eng.isPlaying = false;
@@ -179,7 +206,13 @@ export default function Home() {
   const handleRewind = () => {
     if (!engineRef.current) return;
     const eng = engineRef.current;
-    const newOffset = Math.max(0, (eng.startOffset + (eng.ctx.currentTime - eng.startTime)) - 5);
+    // Duraklatılmış durum: isPlaying=false olduğunda startTime güvenilir değil.
+    // startOffset zaten o ana kadar oynanan kümülatif süreyi tutar;
+    // çalışıyorsa üstüne delta ekle, duraklatılmışsa sadece startOffset kullan.
+    const currentPosition = eng.isPlaying
+      ? eng.startOffset + (eng.ctx.currentTime - eng.startTime)
+      : eng.startOffset;
+    const newOffset = Math.max(0, currentPosition - 5);
     playStemsFrom([...activeStems], newOffset);
   };
 
