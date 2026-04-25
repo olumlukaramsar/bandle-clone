@@ -29,7 +29,6 @@ const STEM_LABELS: Record<StemType, string> = {
 };
 
 // ─── Sabitler ──────────────────────────────────────────────────────────────
-// Mevcut DIFFICULTY_LABELS kısmını bu şekilde güncelle:
 const DIFFICULTY_LABELS: Record<string, string> = {
   '1': 'Kolay',
   '2': 'Kolay / Orta',
@@ -39,7 +38,7 @@ const DIFFICULTY_LABELS: Record<string, string> = {
 };
 
 const DAILY_LIMIT = 3;
-const STAGE_PENALTY = 20;
+const STAGE_PENALTY = 50;
 const MAX_TIME_BONUS = 90;
 const TIME_BONUS_MULT = 1.5;
 
@@ -58,13 +57,13 @@ const calcScore = (activeStems: string[], elapsedSec: number): number => {
   return Math.max(20, 150 - stagePenalty) + timeBonus;
 };
 
-// Sayıları formatla: 1.200.000.000 -> 1.2B, 500.000 -> 500K
+// Sayıları formatla
 const formatViews = (num: number): string => {
   if (!num) return '—';
-  if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)}B İzlenme`;
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M İzlenme`;
-  if (num >= 1_000) return `${(num / 1_000).toFixed(0)}K İzlenme`;
-  return `${num} İzlenme`;
+  if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)}B`;
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(0)}K`;
+  return `${num}`;
 };
 
 // Bugünün tarihine göre şarkı indeksi belirle (YYYY-MM-DD hash)
@@ -78,17 +77,31 @@ const getDailyIndex = (totalSongs: number): number => {
   return hash % totalSongs;
 };
 
-// Dün tarihi YYYY-MM-DD formatında
 const getYesterdayStr = (): string => {
   const d = new Date();
   d.setDate(d.getDate() - 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// Bugün tarihi YYYY-MM-DD formatında
 const getTodayStr = (): string => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// ─── Skor Birleştirme Yardımcısı ──────────────────────────────────────────
+// Aynı kullanıcıya ait birden fazla satırı tek satırda toplar ve büyükten
+// küçüğe sıralar. Bugün/Dün verileri birbirine eklenmez; her liste kendi
+// içinde ayrı ayrı işlenir.
+const aggregateScores = (
+  data: { username: string; points: number }[]
+): { username: string; points: number }[] => {
+  const map = new Map<string, number>();
+  for (const entry of data) {
+    map.set(entry.username, (map.get(entry.username) ?? 0) + entry.points);
+  }
+  return Array.from(map.entries())
+    .map(([username, points]) => ({ username, points }))
+    .sort((a, b) => b.points - a.points);
 };
 
 export default function Home() {
@@ -117,7 +130,7 @@ export default function Home() {
 
   const { activeStems, gameStatus, startGame, submitGuess, skipTurn, currentSong } = useGameStore();
 
-  // ── İlk Yükleme ve Versiyon Kontrolü (v4) ───────────────────────────────────
+  // ── İlk Yükleme ve Versiyon Kontrolü ────────────────────────────────────
   useEffect(() => {
     const savedName = localStorage.getItem('bandle_username');
     if (savedName) setUsername(savedName);
@@ -126,7 +139,6 @@ export default function Home() {
     const savedDaily = localStorage.getItem('bandle_daily_v5');
     if (savedDaily) {
       const parsed = JSON.parse(savedDaily);
-      // Gece yarısı sıfırlama: tarih değiştiyse sıfırla
       if (parsed.date === todayStr) {
         setCompletedCount(parsed.count);
         setSessionScore(parsed.score ?? 0);
@@ -326,7 +338,6 @@ export default function Home() {
 
     const currentIndex = activeStems.length - 1;
     if (STEM_ORDER[currentIndex] === 'full') {
-      // Tüm guess kutularını doldur
       setGuessHistory(prev => {
         const updated = [...prev];
         const emptyIdx = updated.indexOf('empty');
@@ -430,6 +441,7 @@ export default function Home() {
 
       if (todayRes.ok) {
         const todayJson = await todayRes.json();
+        // Ham veriyi al, birleştirme LeaderboardModal içinde yapılıyor
         setLeaderboardData(todayJson);
       } else {
         console.error(`[fetchLeaderboard] Bugün verisi alınamadı: HTTP ${todayRes.status}`);
@@ -460,11 +472,17 @@ export default function Home() {
   };
 
   // ──────────────────────────────────────────────────────────────────────────
-  // GLOBAL LEADERBOARD MODAL (Her phase'de erişilebilir)
+  // GLOBAL LEADERBOARD MODAL
   // ──────────────────────────────────────────────────────────────────────────
   const LeaderboardModal = () => {
     if (!showLeaderboard) return null;
-    const activeData = leaderboardTab === 'today' ? leaderboardData : yesterdayData;
+
+    // Aynı kullanıcının birden fazla satırını birleştir ve sırala.
+    // Bugün ve dün verileri birbirine eklenmez; her sekme kendi verisini toplar.
+    const aggregatedToday = aggregateScores(leaderboardData);
+    const aggregatedYesterday = aggregateScores(yesterdayData);
+    const activeData = leaderboardTab === 'today' ? aggregatedToday : aggregatedYesterday;
+
     return (
       <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
         <div className="bg-[#160022] border border-purple-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl flex flex-col max-h-[85vh]">
@@ -499,7 +517,7 @@ export default function Home() {
             <div className="space-y-2 overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
               {activeData.map((entry, i) => (
                 <div
-                  key={i}
+                  key={entry.username}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl ${entry.username === username ? 'bg-purple-700/60 border border-purple-500' : 'bg-purple-950/50'}`}
                 >
                   <span className={`w-6 font-black text-xs ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-amber-600' : 'text-purple-500'}`}>{i + 1}.</span>
@@ -525,7 +543,7 @@ export default function Home() {
         <LeaderboardModal />
         <div className="w-full max-w-sm text-center">
           <div className="mb-10">
-            <div className="text-[10px] tracking-[0.3em] text-purple-400 uppercase mb-3 font-bold">Müzik Tahmin Oyunu</div>
+            <div className="text-[10px] tracking-[0.3em] text-purple-400 uppercase mb-3 font-bold">Kendi aramızda oynamak için.</div>
             <h1 className="text-5xl font-black text-white leading-none">DOSTLAR<br /><span className="text-purple-400">GAZİNOSU</span></h1>
           </div>
           <div className="bg-[#160022] border border-purple-900 rounded-3xl p-8 space-y-4 shadow-xl">
@@ -628,6 +646,9 @@ export default function Home() {
   const seconds = String(elapsedSec % 60).padStart(2, '0');
   const currentStemLabel = STEM_LABELS[activeStems[activeStems.length - 1] as StemType] ?? '';
 
+  // Şu an aktif olan (dinlenen ama henüz bilinmeyen) aşamanın indeksi
+  const activeStemIndex = gameStatus ? -1 : activeStems.length - 1;
+
   return (
     <main className="min-h-screen bg-[#0d0014] text-white flex flex-col p-4 font-sans max-w-lg mx-auto w-full">
       <style>{animations}</style>
@@ -636,19 +657,19 @@ export default function Home() {
       {/* Header */}
       <header className="flex justify-between items-center mb-3">
         <div className="flex flex-col min-w-0">
-          <span className="text-[8px] text-purple-600 font-bold uppercase tracking-widest">Sahne</span>
-          <span className="font-black text-purple-200 text-sm truncate max-w-[80px]">{username}</span>
+          <span className="text-[8px] text-purple-600 font-bold uppercase tracking-widest">Oyuncu</span>
+          <span className="font-black text-purple-200 text-[12px] truncate max-w-[120px]">{username}</span>
         </div>
         <div className="flex gap-2 items-center">
           <button
             onClick={openLeaderboard}
             className="bg-purple-950/60 border border-purple-700 text-purple-300 font-black px-2.5 py-1.5 rounded-full text-[9px] hover:bg-purple-900/60 transition tracking-widest uppercase whitespace-nowrap"
           >
-            🏆 Sıralama
+            Sıralama
           </button>
           <div className="text-right">
             <span className="text-[8px] text-purple-600 font-bold uppercase tracking-widest block">Skor</span>
-            <p className="font-black text-purple-200 text-sm">{sessionScore}</p>
+            <p className="font-black text-purple-200 text-[12px]">{sessionScore}</p>
           </div>
           <div className="bg-purple-900/40 border border-purple-800 px-2 py-1 rounded-full flex items-center text-xs font-black text-purple-300 whitespace-nowrap">
             {completedCount + 1}/{DAILY_LIMIT}
@@ -662,44 +683,76 @@ export default function Home() {
       {currentSong && (
         <div className="w-full bg-purple-950/40 border border-purple-500/20 backdrop-blur rounded-xl px-3 py-2 mb-3 flex gap-2 justify-around items-center">
           <div className="flex flex-col items-center flex-1">
-            <span className="text-[7px] text-purple-500 font-black uppercase tracking-widest">Yıl</span>
-            <span className="text-purple-200 font-black text-xs tracking-widest">{(currentSong as any).releaseYear ?? '—'}</span>
+            <span className="text-[12px] text-purple-500 font-black uppercase tracking-widest">Yıl</span>
+            <span className="text-purple-200 font-black text-[12px] tracking-widest">{(currentSong as any).releaseYear ?? '—'}</span>
           </div>
           <div className="w-px h-5 bg-purple-700/40" />
           <div className="flex flex-col items-center flex-1">
-            <span className="text-[7px] text-purple-500 font-black uppercase tracking-widest">Zorluk</span>
-            <span className="text-purple-200 font-black text-xs tracking-widest">
+            <span className="text-[12px] text-purple-500 font-black uppercase tracking-widest">Zorluk</span>
+            <span className="text-purple-200 font-black text-[12px] tracking-widest">
               {DIFFICULTY_LABELS[(currentSong as any).difficulty] ?? (currentSong as any).difficulty ?? '—'}
             </span>
           </div>
           <div className="w-px h-5 bg-purple-700/40" />
           <div className="flex flex-col items-center flex-1">
-            <span className="text-[7px] text-purple-500 font-black uppercase tracking-widest">Popülerlik</span>
-            <span className="text-purple-200 font-black text-xs tracking-widest">{formatViews((currentSong as any).viewCount)}</span>
+            <span className="text-[12px] text-purple-500 font-black uppercase tracking-widest">Youtube</span>
+            <span className="text-purple-200 font-black text-[12px] tracking-widest">{formatViews((currentSong as any).viewCount)}</span>
           </div>
         </div>
       )}
 
-      {/* Segmented Progress Bar (5 bar, aşama adlı) */}
-      <div className="flex gap-1 mb-5">
+      {/* ── Dikey Segmented Progress Bar (Bandle Style) ── */}
+      <div className="flex flex-col gap-1.5 mb-4">
         {STEM_ORDER.map((stem, i) => {
           const state = guessHistory[i] ?? 'empty';
+          const isActive = i === activeStems.length - 1 && gameStatus !== 'won'; // Şu an dinlenen, henüz bilinmeyen aşama
+
+          let barBg = 'bg-purple-950/60 border-purple-900/60';
+          let textColor = 'text-purple-800';
+          let glowClass = '';
+          let dotColor = 'bg-purple-800/40';
+
+          if (state === 'correct') {
+            barBg = 'bg-green-600/80 border-green-500/60';
+            textColor = 'text-green-100';
+            dotColor = 'bg-green-300';
+          } else if (state === 'wrong') {
+            barBg = 'bg-red-700/70 border-red-600/60';
+            textColor = 'text-red-200';
+            dotColor = 'bg-red-300';
+          } else if (isActive) {
+  // Aktif aşama: Net ve belirgin yeşil (Animasyonsuz)
+            barBg = 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.4)]';
+            textColor = 'text-emerald-50';
+            glowClass = ''; // Animasyonu kaldırdık
+            dotColor = 'bg-emerald-200';
+          }
+
           return (
             <div
               key={stem}
-              className={`flex-1 flex items-center justify-center rounded-md transition-all duration-500 border py-1.5 ${
-                state === 'correct'
-                  ? 'bg-green-500 border-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]'
-                  : state === 'wrong'
-                  ? 'bg-red-600 border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'
-                  : 'bg-purple-950 border-purple-900'
-              }`}
+              className={`
+                relative flex items-center gap-3 rounded-lg border px-3 py-2 transition-all duration-500
+                ${barBg} ${glowClass}
+              `}
             >
-              <span className={`text-[8px] font-black uppercase tracking-tight leading-none text-center px-0.5 ${
-                state === 'correct' ? 'text-green-100' : state === 'wrong' ? 'text-red-200' : 'text-purple-700'
-              }`}>
-                {STEM_LABELS[stem].split(' ')[0]}
+              {/* Durum noktası */}
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 transition-colors duration-500 ${dotColor} ${isActive ? 'animate-pulse' : ''}`} />
+
+              {/* Enstrüman adı */}
+              <span className={`text-[11px] font-black uppercase tracking-wider leading-none flex-1 transition-colors duration-500 ${textColor}`}>
+                {STEM_LABELS[stem]}
               </span>
+
+              {/* Durum ikonu */}
+              <span className="text-xs flex-shrink-0">
+                {state === 'correct' ? '✓' : state === 'wrong' ? '✕' : isActive ? '▶' : ''}
+              </span>
+
+              {/* Aktif aşama için parlayan kenar çizgisi animasyonu */}
+              {isActive && (
+                <div className="absolute inset-0 rounded-lg border border-emerald-400/40 animate-pulse pointer-events-none" />
+              )}
             </div>
           );
         })}
@@ -762,7 +815,12 @@ export default function Home() {
 const animations = `
   @keyframes ping { 0% { transform: scale(0.7); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
   @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+  @keyframes active-glow {
+    0%, 100% { box-shadow: 0 0 6px 0px rgba(52, 211, 153, 0.35), inset 0 0 8px rgba(52, 211, 153, 0.08); }
+    50%       { box-shadow: 0 0 14px 3px rgba(52, 211, 153, 0.55), inset 0 0 16px rgba(52, 211, 153, 0.15); }
+  }
   .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
+  .animate-active-glow { animation: active-glow 1.4s ease-in-out infinite; }
   .custom-scrollbar::-webkit-scrollbar { width: 4px; }
   .custom-scrollbar::-webkit-scrollbar-thumb { background: #7c3aed; border-radius: 10px; }
   .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
