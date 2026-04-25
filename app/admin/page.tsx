@@ -1,18 +1,23 @@
 "use client";
 
 import { useState } from 'react';
-import { Upload, Music, User, Loader2 } from 'lucide-react';
+import { Upload, Music, User, Loader2, Star, Calendar } from 'lucide-react';
 
 export default function AdminPage() {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
+  // Yeni Alanlar
+  const [difficulty, setDifficulty] = useState('3');
+  const [releaseYear, setReleaseYear] = useState(new Date().getFullYear().toString());
+  const [viewCount, setViewCount] = useState('');
+  
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file || !title || !artist) {
+    if (!file || !title || !artist || !releaseYear || !viewCount) {
       setMessage('Lütfen tüm alanları doldurun ve bir ZIP dosyası seçin.');
       return;
     }
@@ -24,6 +29,10 @@ export default function AdminPage() {
     formData.append('file', file);
     formData.append('title', title);
     formData.append('artist', artist);
+    // Yeni Verileri Ekleme
+    formData.append('difficulty', difficulty);
+    formData.append('releaseYear', releaseYear);
+    formData.append('viewCount', viewCount);
 
     try {
       const response = await fetch('/api/admin/upload', {
@@ -34,10 +43,11 @@ export default function AdminPage() {
       const data = await response.json();
 
       if (response.ok) {
-        setMessage('✅ Şarkı ve katmanları başarıyla yüklendi!');
+        setMessage('✅ Şarkı ve tüm verileri başarıyla yüklendi!');
         setFile(null);
         setTitle('');
         setArtist('');
+        setViewCount('');
       } else {
         setMessage(`❌ Hata: ${data.error}`);
       }
@@ -58,40 +68,89 @@ export default function AdminPage() {
 
         <form onSubmit={handleUpload} className="bg-neutral-800 p-6 rounded-2xl shadow-xl flex flex-col gap-6">
           
-          {/* Şarkı Adı */}
-          <div>
-            <label className="block text-neutral-400 text-sm font-bold mb-2 flex items-center gap-2">
-              <Music size={16} /> Şarkı Adı
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Örn: Bohemian Rhapsody"
-              className="w-full bg-neutral-900 border border-neutral-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
-              required
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Şarkı Adı */}
+            <div>
+              <label className="block text-neutral-400 text-sm font-bold mb-2 flex items-center gap-2">
+                <Music size={16} /> Şarkı Adı
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Örn: Söyle Canım"
+                className="w-full bg-neutral-900 border border-neutral-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+                required
+              />
+            </div>
+
+            {/* Sanatçı Adı */}
+            <div>
+              <label className="block text-neutral-400 text-sm font-bold mb-2 flex items-center gap-2">
+                <User size={16} /> Sanatçı Adı
+              </label>
+              <input
+                type="text"
+                value={artist}
+                onChange={(e) => setArtist(e.target.value)}
+                placeholder="Örn: Erol Evgin"
+                className="w-full bg-neutral-900 border border-neutral-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+                required
+              />
+            </div>
           </div>
 
-          {/* Sanatçı Adı */}
-          <div>
-            <label className="block text-neutral-400 text-sm font-bold mb-2 flex items-center gap-2">
-              <User size={16} /> Sanatçı Adı
-            </label>
-            <input
-              type="text"
-              value={artist}
-              onChange={(e) => setArtist(e.target.value)}
-              placeholder="Örn: Queen"
-              className="w-full bg-neutral-900 border border-neutral-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
-              required
-            />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Zorluk */}
+            <div>
+              <label className="block text-neutral-400 text-sm font-bold mb-2 flex items-center gap-2">
+                <Star size={16} /> Zorluk (1-5)
+              </label>
+              <select
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+                className="w-full bg-neutral-900 border border-neutral-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+              >
+                {[1, 2, 3, 4, 5].map((num) => (
+                  <option key={num} value={num}>{num} {num === 1 ? '(Kolay)' : num === 5 ? '(Zor)' : ''}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Yıl */}
+            <div>
+              <label className="block text-neutral-400 text-sm font-bold mb-2 flex items-center gap-2">
+                <Calendar size={16} /> Çıkış Yılı
+              </label>
+              <input
+                type="number"
+                value={releaseYear}
+                onChange={(e) => setReleaseYear(e.target.value)}
+                className="w-full bg-neutral-900 border border-neutral-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+                required
+              />
+            </div>
+
+            {/* YouTube İzlenme */}
+            <div>
+              <label className="block text-neutral-400 text-sm font-bold mb-2 flex items-center gap-2">
+                 YouTube İzlenme
+              </label>
+              <input
+                type="number"
+                value={viewCount}
+                onChange={(e) => setViewCount(e.target.value)}
+                placeholder="Örn: 8800000"
+                className="w-full bg-neutral-900 border border-neutral-600 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+                required
+              />
+            </div>
           </div>
 
           {/* Dosya Yükleme Alanı */}
           <div>
             <label className="block text-neutral-400 text-sm font-bold mb-2 flex items-center gap-2">
-              <Upload size={16} /> ZIP Dosyası Yükle (İçinde 5 adet mp3 olmalı)
+              <Upload size={16} /> ZIP Dosyası Yükle
             </label>
             <div className="relative w-full h-32 border-2 border-dashed border-neutral-600 rounded-lg flex items-center justify-center hover:border-green-500 transition-colors bg-neutral-900 cursor-pointer">
               <input
@@ -109,28 +168,18 @@ export default function AdminPage() {
                 )}
               </div>
             </div>
-            <p className="text-xs text-neutral-500 mt-2">
-              *ZIP dosyasının içinde isimleri tam olarak şöyle olan dosyalar olmalıdır: <br/>
-              <code className="text-green-400 bg-neutral-900 px-1 rounded">drums.mp3</code>, 
-              <code className="text-green-400 bg-neutral-900 px-1 rounded ml-1">bass.mp3</code>, 
-              <code className="text-green-400 bg-neutral-900 px-1 rounded ml-1">synth.mp3</code>, 
-              <code className="text-green-400 bg-neutral-900 px-1 rounded ml-1">vocals.mp3</code>, 
-              <code className="text-green-400 bg-neutral-900 px-1 rounded ml-1">full.mp3</code>
-            </p>
           </div>
 
-          {/* Sistem Mesajları */}
           {message && (
             <div className={`p-4 rounded-lg font-medium text-center ${message.includes('❌') || message.includes('Lütfen') ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'}`}>
               {message}
             </div>
           )}
 
-          {/* Yükle Butonu */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-green-500 hover:bg-green-400 text-black font-bold py-4 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+            className="w-full bg-green-500 hover:bg-green-400 text-black font-bold py-4 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <>
@@ -138,7 +187,7 @@ export default function AdminPage() {
                 İşleniyor...
               </>
             ) : (
-              'Sisteme Yükle'
+              'Şarkıyı ve Verileri Kaydet'
             )}
           </button>
         </form>

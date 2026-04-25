@@ -259,7 +259,7 @@ export default function Home() {
       }
       if (ctx.state === 'suspended') await ctx.resume();
 
-      const songRes = await fetch(`/api/songs/random?index=${index}`, {
+      const songRes = await fetch(`/api/songs/random?index=${index}&date=${getTodayStr()}`, {
         cache: 'no-cache',
         mode: 'cors',
       });
