@@ -117,6 +117,8 @@ export default function Home() {
   const playStemsFrom = (activeList: string[], offset = 0) => {
     if (!engineRef.current) return;
     const { ctx, buffers, gains, sources } = engineRef.current;
+
+    if (ctx.state === 'suspended') ctx.resume();
     
     stopAllSources();
 
