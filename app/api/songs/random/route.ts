@@ -30,7 +30,23 @@ export async function GET(req: Request) {
 
     const dailySong = allSongs[targetIndex];
 
-    return NextResponse.json(dailySong, { status: 200 });
+// ... dailySong'u bulduğunuz satırdan sonra
+
+// 1. Evrensel BigInt Dönüştürücü:
+// Obje içindeki tüm BigInt'leri güvenli bir şekilde Number'a çevirir.
+const safeSongData = JSON.parse(
+  JSON.stringify(dailySong, (key, value) =>
+    typeof value === 'bigint' ? Number(value) : value
+  )
+);
+
+// Artık hata almadan JSON olarak dönebiliriz:
+return NextResponse.json(safeSongData, { status: 200 });
+
+    // NextResponse.json(dailySong) yerine şunu kullan:
+return NextResponse.json(JSON.parse(JSON.stringify(dailySong, (key, value) =>
+  typeof value === 'bigint' ? value.toString() : value
+)), { status: 200 });
   } catch (error) {
     console.error("Şarkı çekilirken hata:", error);
     return NextResponse.json({ error: "Şarkı getirilemedi" }, { status: 500 });

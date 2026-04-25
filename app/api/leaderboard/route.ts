@@ -1,32 +1,44 @@
-import { db } from "@/lib/db";
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const dateParam = searchParams.get('date');
+
   try {
-    // 1. Günlük puanları kullanıcı adına göre gruplayıp topluyoruz
-    const scores = await db.dailyScore.groupBy({
-      by: ['username'],
-      _sum: {
-        points: true,
-      },
-      orderBy: {
-        _sum: {
-          points: 'desc',
+    // 1. Tarih Aralığını Belirle
+    const now = new Date();
+    let startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+    if (dateParam === 'yesterday') {
+      // Dünün başlangıcı ve bitişi
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+
+    // 2. Veritabanından Skorları Çek
+    const leaderboard = await prisma.dailyScore.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+          lt: endDate,
         },
       },
-      take: 20, // İlk 20 kişi
+      orderBy: [
+        { points: 'desc' },      // Önce en yüksek puan
+        { createdAt: 'asc' },    // Puan eşitse önce yapan üste çıkar
+      ],
+      take: 50, // İlk 50 kişi
+      select: {
+        username: true,
+        points: true,
+      },
     });
 
-    // 2. Prisma'dan gelen karmaşık yapıyı (_sum.points) 
-    // frontend'in beklediği temiz yapıya (points) çeviriyoruz.
-    const formattedScores = scores.map((item) => ({
-      username: item.username,
-      points: item._sum.points || 0,
-    }));
-
-    return NextResponse.json(formattedScores, { status: 200 });
+    return NextResponse.json(leaderboard);
   } catch (error) {
-    console.error("Liderlik tablosu çekilirken hata:", error);
-    return NextResponse.json({ error: "Liderlik tablosu yüklenemedi" }, { status: 500 });
+    console.error("Liderlik tablosu hatası:", error);
+    return NextResponse.json({ error: "Veriler alınamadı" }, { status: 500 });
   }
 }
