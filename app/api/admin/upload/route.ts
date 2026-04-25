@@ -1,64 +1,105 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
-// ... diğer importların (put, unzip vb.)
+import { put } from "@vercel/blob";
+import JSZip from "jszip";
+
+// Stem sırası ve tipi
+const STEM_ORDER: Record<string, number> = {
+  drums: 1,
+  bass: 2,
+  synth: 3,
+  vocals: 4,
+  full: 5,
+};
 
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    
-    // Temel verileri al
-    const title = formData.get('title') as string;
-    const artist = formData.get('artist') as string;
-    
-    // Formdan gelen yeni verileri al
-    const difficultyStr = formData.get('difficulty') as string;
-    const releaseYearStr = formData.get('releaseYear') as string;
-    const viewCountStr = formData.get('viewCount') as string;
-    const youtubeId = formData.get('youtubeId') as string; // Formda varsa
-    const thumbnailUrl = formData.get('thumbnailUrl') as string; // Formda varsa
 
-    // 1. Dinamik bir data objesi oluşturuyoruz
-    // Sadece zorunlu olanları en başta ekliyoruz
-    const songCreateData: any = {
+    // Form verilerini al
+    const title = formData.get("title") as string;
+    const artist = formData.get("artist") as string;
+    const difficultyStr = formData.get("difficulty") as string;
+    const releaseYearStr = formData.get("releaseYear") as string;
+    const viewCountStr = formData.get("viewCount") as string;
+    const file = formData.get("file") as File;
+
+    if (!title || !artist || !file) {
+      return NextResponse.json(
+        { error: "title, artist ve ZIP dosyası zorunludur." },
+        { status: 400 }
+      );
+    }
+
+    // ZIP dosyasını oku ve aç
+    const zipBuffer = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(zipBuffer);
+
+    // Her stem için Vercel Blob'a yükle
+    const stemCreates: { type: string; order: number; audioUrl: string }[] = [];
+
+    for (const [stemType, order] of Object.entries(STEM_ORDER)) {
+      const fileName = `${stemType}.mp3`;
+      const zipEntry = zip.file(fileName);
+
+      if (!zipEntry) {
+        return NextResponse.json(
+          { error: `ZIP içinde '${fileName}' bulunamadı.` },
+          { status: 400 }
+        );
+      }
+
+      const stemBuffer = await zipEntry.async("arraybuffer");
+      const stemBlob = new Blob([stemBuffer], { type: "audio/mpeg" });
+
+      // Vercel Blob'a yükle — benzersiz path
+      const blobPath = `songs/${title
+        .toLowerCase()
+        .replace(/\s+/g, "-")}-${Date.now()}/${fileName}`;
+
+      const { url } = await put(blobPath, stemBlob, {
+        access: "public",
+        contentType: "audio/mpeg",
+      });
+
+      stemCreates.push({ type: stemType, order, audioUrl: url });
+    }
+
+    // Prisma'ya kaydet
+    const songData: any = {
       title,
       artist,
-      difficulty: difficultyStr ? parseInt(difficultyStr) : 3, // Boşsa varsayılan 3
+      difficulty: difficultyStr ? parseInt(difficultyStr) : 3,
     };
 
-    // 2. Sadece DOLU olan (null olmayan) alanları objeye ekliyoruz
     if (releaseYearStr && releaseYearStr !== "") {
-      songCreateData.releaseYear = parseInt(releaseYearStr);
+      songData.releaseYear = parseInt(releaseYearStr);
     }
 
     if (viewCountStr && viewCountStr !== "") {
-      // BigInt hatasını önlemek için string'den BigInt'e çeviriyoruz
-      songCreateData.viewCount = BigInt(viewCountStr);
+      songData.viewCount = BigInt(viewCountStr);
     }
-
-    if (youtubeId && youtubeId !== "") {
-      songCreateData.youtubeId = youtubeId;
-    }
-
-    if (thumbnailUrl && thumbnailUrl !== "") {
-      songCreateData.thumbnailUrl = thumbnailUrl;
-    }
-
-    // ... Dosya yükleme ve ZIP açma işlemlerin bittikten sonra ...
-    // Prisma Create kısmını şu şekilde kullan:
 
     const newSong = await prisma.song.create({
       data: {
-        ...songCreateData, // Hazırladığımız dolu verileri buraya yayıyoruz
+        ...songData,
         stems: {
-          create: [
-            // ... daha önceki stem (drums, bass vb.) yükleme kodların ...
-          ]
-        }
-      }
+          create: stemCreates,
+        },
+      },
+      include: {
+        stems: true,
+      },
     });
 
-    return NextResponse.json(newSong);
+    // BigInt serialize
+    const serialized = JSON.parse(
+      JSON.stringify(newSong, (_, value) =>
+        typeof value === "bigint" ? value.toString() : value
+      )
+    );
 
+    return NextResponse.json(serialized);
   } catch (error: any) {
     console.error("Yükleme hatası:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -136,7 +136,7 @@ export default function Home() {
     if (savedName) setUsername(savedName);
 
     const todayStr = getTodayStr();
-    const savedDaily = localStorage.getItem('bandle_daily_v5');
+    const savedDaily = localStorage.getItem('bandle_daily_v6');
     if (savedDaily) {
       const parsed = JSON.parse(savedDaily);
       if (parsed.date === todayStr) {
@@ -147,10 +147,10 @@ export default function Home() {
           return;
         }
       } else {
-        localStorage.setItem('bandle_daily_v5', JSON.stringify({ date: todayStr, count: 0, score: 0 }));
+        localStorage.setItem('bandle_daily_v6', JSON.stringify({ date: todayStr, count: 0, score: 0 }));
       }
     } else {
-      localStorage.setItem('bandle_daily_v5', JSON.stringify({ date: todayStr, count: 0, score: 0 }));
+      localStorage.setItem('bandle_daily_v6', JSON.stringify({ date: todayStr, count: 0, score: 0 }));
     }
 
     if (savedName) setPhase('ready');
@@ -401,7 +401,7 @@ export default function Home() {
     setLastScore(score);
 
     const todayStr = getTodayStr();
-    localStorage.setItem('bandle_daily_v5', JSON.stringify({ date: todayStr, count: newCompleted, score: newTotalScore }));
+    localStorage.setItem('bandle_daily_v6', JSON.stringify({ date: todayStr, count: newCompleted, score: newTotalScore }));
 
     if (score > 0) {
       setIsSaving(true);

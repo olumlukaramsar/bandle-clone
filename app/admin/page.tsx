@@ -30,9 +30,9 @@ export default function AdminPage() {
     formData.append('title', title);
     formData.append('artist', artist);
     // Yeni Verileri Ekleme
-    formData.append('difficulty', difficulty);
-    formData.append('releaseYear', releaseYear);
-    formData.append('viewCount', viewCount);
+    formData.append('difficulty', String(Number(difficulty)));
+    formData.append('releaseYear', String(Number(releaseYear))); 
+    formData.append('viewCount', String(Number(viewCount)));
 
     try {
       const response = await fetch('/api/admin/upload', {
