@@ -44,6 +44,7 @@ export async function GET(req: Request) {
     }
 
     // Tüm şarkıları ID sırasına göre çekiyoruz (sabit temel sıra).
+    const dayStart = new Date(`${dateStr}T00:00:00.000Z`);
     const allSongs = await db.song.findMany({
       orderBy: { id: 'asc' },
       include: { stems: true }
