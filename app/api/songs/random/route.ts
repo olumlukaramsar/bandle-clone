@@ -37,6 +37,9 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
 
+    // Günlük kaçıncı şarkı (0, 1, 2 …) — her tur için farklı şarkı seçilir.
+    const songIndex = parseInt(searchParams.get("index") || "0");
+
     // Frontend'den gelen tarih parametresi (YYYY-MM-DD). Yoksa sunucu UTC+3 saatine göre hesaplar.
     let dateStr = searchParams.get("date") || "";
     if (!dateStr) {
@@ -62,14 +65,14 @@ export async function GET(req: Request) {
     const fixedSeed = dateToSeed("2025-01-01");
     const shuffled = seededShuffle(allSongs, fixedSeed);
 
-    // Epoch'tan kaç gün geçti? Bu değer her gün bir artar ve indeks olarak kullanılır.
-    // Tam tur (shuffled.length gün) tamamlanınca döngüsel olarak başa döner;
-    // aynı gün içinde hiçbir şarkı tekrar etmez.
+    // Epoch'tan kaç gün geçti?
     const dayStart = new Date(`${dateStr}T00:00:00.000Z`);
     const dayNumber = Math.floor(
       (dayStart.getTime() - SHUFFLE_EPOCH.getTime()) / 86_400_000
     );
-    const targetIndex = ((dayNumber % shuffled.length) + shuffled.length) % shuffled.length;
+
+    // dayNumber + songIndex → aynı gün içindeki her tur farklı şarkıya düşer.
+    const targetIndex = ((dayNumber + songIndex) % shuffled.length + shuffled.length) % shuffled.length;
     const dailySong = shuffled[targetIndex];
 
     // BigInt değerlerini Number'a güvenli şekilde dönüştür.
