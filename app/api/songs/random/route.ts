@@ -1,6 +1,9 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 
+// Sabit epoch — shuffle sırası hiçbir zaman değişmez.
+const SHUFFLE_EPOCH = new Date("2025-01-01T00:00:00.000Z");
+
 // Tarihi (YYYY-MM-DD) deterministik bir tam sayıya dönüştürür.
 function dateToSeed(dateStr: string): number {
   let hash = 0;
@@ -33,8 +36,6 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const indexParam = searchParams.get("index") || "0";
-    const songIndex = parseInt(indexParam);
 
     // Frontend'den gelen tarih parametresi (YYYY-MM-DD). Yoksa sunucu UTC+3 saatine göre hesaplar.
     let dateStr = searchParams.get("date") || "";
@@ -44,29 +45,37 @@ export async function GET(req: Request) {
     }
 
     // Tüm şarkıları ID sırasına göre çekiyoruz (sabit temel sıra).
-    const dayStart = new Date(`${dateStr}T00:00:00.000Z`);
     const allSongs = await db.song.findMany({
-      orderBy: { id: 'asc' },
-      include: { stems: true }
+      orderBy: { id: "asc" },
+      include: { stems: true },
     });
 
     if (allSongs.length === 0) {
-      return NextResponse.json({ error: "Veritabanında şarkı yok" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Veritabanında şarkı yok" },
+        { status: 404 }
+      );
     }
 
-    // Tarihi seed'e çevir ve şarkıları o güne özgü sabit bir sıraya diz.
-    // Yeni şarkı eklenmesi geçmiş günlerin sırasını etkilemez.
-    const seed = dateToSeed(dateStr);
-    const shuffled = seededShuffle(allSongs, seed);
+    // Shuffle sırası her zaman sabit epoch seed'i ile belirlenir.
+    // Böylece yeni şarkı eklense bile geçmiş günlerin sırası değişmez.
+    const fixedSeed = dateToSeed("2025-01-01");
+    const shuffled = seededShuffle(allSongs, fixedSeed);
 
-    // Havuz turu: toplam şarkı sayısını mod alarak döngüsel ilerleme sağla.
-    const targetIndex = songIndex % shuffled.length;
+    // Epoch'tan kaç gün geçti? Bu değer her gün bir artar ve indeks olarak kullanılır.
+    // Tam tur (shuffled.length gün) tamamlanınca döngüsel olarak başa döner;
+    // aynı gün içinde hiçbir şarkı tekrar etmez.
+    const dayStart = new Date(`${dateStr}T00:00:00.000Z`);
+    const dayNumber = Math.floor(
+      (dayStart.getTime() - SHUFFLE_EPOCH.getTime()) / 86_400_000
+    );
+    const targetIndex = ((dayNumber % shuffled.length) + shuffled.length) % shuffled.length;
     const dailySong = shuffled[targetIndex];
 
     // BigInt değerlerini Number'a güvenli şekilde dönüştür.
     const safeSongData = JSON.parse(
       JSON.stringify(dailySong, (_key, value) =>
-        typeof value === 'bigint' ? Number(value) : value
+        typeof value === "bigint" ? Number(value) : value
       )
     );
 
